@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "MyTube Category Filter",
+  "version": "1.0.0",
+  "description": "YouTubeの動画をカテゴリ別に分類し、フィルタリングする拡張機能",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "options_page": "options.html"
+}

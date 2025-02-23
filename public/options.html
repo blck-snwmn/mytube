@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MyTube Category Filter 設定</title>
+  <style>
+    body {
+      width: 800px;
+      margin: 20px auto;
+      font-family: sans-serif;
+    }
+    .category-list {
+      margin: 20px 0;
+    }
+    .category-item {
+      border: 1px solid #ccc;
+      margin: 10px 0;
+      padding: 15px;
+      border-radius: 4px;
+    }
+    .category-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .keyword-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin: 10px 0;
+    }
+    .keyword-tag {
+      background: #e0e0e0;
+      padding: 5px 10px;
+      border-radius: 15px;
+      font-size: 14px;
+    }
+    .add-category-form {
+      border: 1px solid #ccc;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 4px;
+    }
+    .form-group {
+      margin: 10px 0;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .radio-group {
+      margin: 10px 0;
+    }
+    .radio-group label {
+      display: inline-block;
+      margin-right: 15px;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #45a049;
+    }
+    button.delete {
+      background: #f44336;
+    }
+    button.delete:hover {
+      background: #da190b;
+    }
+    .grayed-out {
+      opacity: 0.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>MyTube Category Filter 設定</h1>
+  
+  <div class="add-category-form">
+    <h2>新しいカテゴリを追加</h2>
+    <form id="addCategoryForm">
+      <div class="form-group">
+        <label for="categoryName">カテゴリ名</label>
+        <input type="text" id="categoryName" required>
+      </div>
+      <div class="form-group">
+        <label for="keywords">キーワード（カンマ区切りで入力）</label>
+        <input type="text" id="keywords" required>
+      </div>
+      <div class="form-group">
+        <label>キーワードの適用対象</label>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="target" value="title" checked>
+            タイトル（説明文含む）
+          </label>
+          <label>
+            <input type="radio" name="target" value="channel">
+            チャンネル名
+          </label>
+          <label>
+            <input type="radio" name="target" value="both">
+            両方
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" id="isGrayedOut">
+          このカテゴリの動画をグレーアウトする
+        </label>
+      </div>
+      <button type="submit">カテゴリを追加</button>
+    </form>
+  </div>
+
+  <h2>カテゴリ一覧</h2>
+  <div id="categoryList" class="category-list">
+    <!-- カテゴリがJavaScriptで動的に追加されます -->
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

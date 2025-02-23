@@ -1,13 +1,25 @@
 {
   "name": "mytube",
   "version": "1.0.0",
-  "description": "",
+  "description": "YouTubeの動画をカテゴリ別に分類し、フィルタリングする拡張機能",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "webpack && npm run copy-files",
+    "watch": "webpack --watch",
+    "copy-files": "cp public/manifest.json dist/ && cp public/options.html dist/",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.4.1"
+  "packageManager": "pnpm@10.4.1",
+  "devDependencies": {
+    "@types/chrome": "0.0.306",
+    "ts-loader": "9.5.2",
+    "typescript": "5.7.3",
+    "vitest": "3.0.6",
+    "webpack": "5.98.0",
+    "webpack-cli": "6.0.1"
+  }
 }
