@@ -4,6 +4,10 @@ import { Category, VideoInfo } from '../core/types';
 
 class YouTubeContentScript {
   private categoryMatcher: CategoryMatcher | null = null;
+  private observer: MutationObserver | null = null;
+  private mainContentObserver: MutationObserver | null = null;
+  private bodyObserver: MutationObserver | null = null;
+  private isInitialized = false;
   private readonly BADGE_STYLE = `
     .category-badge-container {
       display: flex;
@@ -42,12 +46,17 @@ class YouTubeContentScript {
   }
 
   private async initialize(): Promise<void> {
-    const categories = await CategoryStorage.loadCategories();
-    this.categoryMatcher = new CategoryMatcher(categories);
-    this.setupMutationObserver();
+    try {
+      const categories = await CategoryStorage.loadCategories();
+      this.categoryMatcher = new CategoryMatcher(categories);
+      this.setupObservers();
+      this.isInitialized = true;
 
-    // 初期表示の動画を処理
-    this.processCurrentVideos();
+      // 初期表示の動画を処理
+      this.processCurrentVideos();
+    } catch (error) {
+      console.error('Failed to initialize YouTubeContentScript:', error);
+    }
   }
 
   private injectStyles(): void {
@@ -78,45 +87,161 @@ class YouTubeContentScript {
     this.processCurrentVideos();
   }
 
-  private setupMutationObserver(): void {
-    const observer = new MutationObserver((mutations) => {
+  private setupObservers(): void {
+    this.disconnectAllObservers();
+
+    // メインのコンテンツコンテナを監視
+    this.setupMainContentObserver();
+    // 動画リストコンテナを監視
+    this.setupVideoListObserver();
+
+    // DOMの変更を監視して新しいコンテナが追加されたら監視を設定
+    this.bodyObserver = new MutationObserver(() => {
+      if (this.isInitialized) {
+        this.setupVideoListObserver();
+      }
+    });
+
+    this.bodyObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  private disconnectAllObservers(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+    }
+    if (this.mainContentObserver) {
+      this.mainContentObserver.disconnect();
+      this.mainContentObserver = null;
+    }
+    if (this.bodyObserver) {
+      this.bodyObserver.disconnect();
+      this.bodyObserver = null;
+    }
+  }
+
+  private setupMainContentObserver(): void {
+    if (this.mainContentObserver) {
+      this.mainContentObserver.disconnect();
+      this.mainContentObserver = null;
+    }
+
+    const mainContent = document.querySelector('ytd-page-manager');
+    if (!mainContent) return;
+
+    this.mainContentObserver = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'childList') {
-          this.processNewVideos(mutation.addedNodes);
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          // メインコンテンツの変更を検出したら、少し待ってから処理を実行
+          setTimeout(() => {
+            if (this.isInitialized) {
+              this.cleanupAllBadges();
+              this.processCurrentVideos();
+              // 動画リストの監視を再設定
+              this.setupVideoListObserver();
+            }
+          }, 100);
         }
       }
     });
 
-    // YouTube のメインコンテンツ領域を監視
-    const targetNode = document.querySelector('#content');
-    if (targetNode) {
-      observer.observe(targetNode, {
-        childList: true,
-        subtree: true
-      });
+    this.mainContentObserver.observe(mainContent, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  private setupVideoListObserver(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
     }
+
+    this.observer = new MutationObserver((mutations) => {
+      if (!this.isInitialized) return;
+
+      let hasRelevantChanges = false;
+
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          // 新しい動画要素が追加された場合
+          const addedVideos = Array.from(mutation.addedNodes)
+            .filter(node => node instanceof HTMLElement &&
+              (node.tagName.toLowerCase() === 'ytd-rich-item-renderer' ||
+               node.tagName.toLowerCase() === 'ytd-video-renderer'));
+
+          if (addedVideos.length > 0) {
+            hasRelevantChanges = true;
+            addedVideos.forEach(video => this.processVideoElement(video as HTMLElement));
+          }
+        } else if (mutation.type === 'attributes' && 
+                  mutation.target instanceof HTMLElement &&
+                  mutation.attributeName === 'hidden') {
+          // hidden属性の変更を検出した場合
+          hasRelevantChanges = true;
+        }
+      }
+
+      // 関連する変更があった場合、全体を再処理
+      if (hasRelevantChanges) {
+        // 少し待ってから処理を実行（DOMの更新が完了するのを待つ）
+        setTimeout(() => {
+          this.cleanupAllBadges();
+          this.processCurrentVideos();
+        }, 50);
+      }
+    });
+
+    // 動画リストコンテナを監視
+    const videoContainers = document.querySelectorAll([
+      'ytd-rich-grid-renderer',
+      'ytd-rich-grid-row',
+      'ytd-shelf-renderer',
+      'ytd-watch-next-secondary-results-renderer',
+      'ytd-two-column-browse-results-renderer'
+    ].join(','));
+
+    videoContainers.forEach(container => {
+      if (container && this.observer) {
+        this.observer.observe(container, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['hidden'] // hidden属性の変更も監視
+        });
+      }
+    });
+  }
+
+  private cleanupAllBadges(): void {
+    document.querySelectorAll('.category-badge-container').forEach(badge => badge.remove());
+    document.querySelectorAll('.members-only-container').forEach(element => {
+      element.classList.remove('members-only-container');
+    });
+    // スタイルもリセット
+    document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer').forEach(element => {
+      if (element instanceof HTMLElement) {
+        element.style.opacity = '';
+        element.style.filter = '';
+      }
+    });
   }
 
   private processCurrentVideos(): void {
+    if (!this.isInitialized) return;
+
     const videoElements = document.querySelectorAll('ytd-rich-item-renderer, ytd-video-renderer');
     videoElements.forEach(element => this.processVideoElement(element as HTMLElement));
   }
 
-  private processNewVideos(nodes: NodeList): void {
-    nodes.forEach(node => {
-      if (node instanceof HTMLElement) {
-        if (
-          node.tagName.toLowerCase() === 'ytd-rich-item-renderer' ||
-          node.tagName.toLowerCase() === 'ytd-video-renderer'
-        ) {
-          this.processVideoElement(node);
-        }
-      }
-    });
-  }
-
   private async processVideoElement(element: HTMLElement): Promise<void> {
-    if (!this.categoryMatcher) return;
+    if (!this.categoryMatcher || !this.isInitialized) return;
+
+    // 既存のバッジを削除
+    element.querySelectorAll('.category-badge-container').forEach(badge => badge.remove());
 
     const videoInfo = this.extractVideoInfo(element);
     if (!videoInfo) return;
@@ -152,9 +277,6 @@ class YouTubeContentScript {
   }
 
   private applyStyles(element: HTMLElement, matchedCategories: Category[], isMembersOnly: boolean): void {
-    // 既存のバッジコンテナを削除
-    element.querySelectorAll('.category-badge-container').forEach(container => container.remove());
-
     // グレーアウトが必要なカテゴリが1つでもあれば要素をグレーアウト
     const shouldGrayOut = matchedCategories.some(category => category.isGrayedOut);
 
@@ -167,8 +289,8 @@ class YouTubeContentScript {
     }
 
     // メンバーシップ限定の場合、緑色の枠を追加
-    const container = element.querySelector('#content, #dismissible') as HTMLElement;
-    if (container) {
+    const container = element.querySelector('#content, #dismissible');
+    if (container instanceof HTMLElement) {
       if (isMembersOnly) {
         container.classList.add('members-only-container');
       } else {
@@ -178,24 +300,18 @@ class YouTubeContentScript {
 
     // カテゴリバッジを追加
     if (matchedCategories.length > 0) {
-      // バッジの挿入位置を特定
       const metadataLine = element.querySelector('#metadata-line');
-      if (!metadataLine) return;
-
-      // バッジコンテナを作成
-      const badgeContainer = document.createElement('div');
-      badgeContainer.className = 'category-badge-container';
-
-      // バッジを追加
-      matchedCategories.forEach(category => {
-        const badge = document.createElement('span');
-        badge.className = 'category-badge';
-        badge.textContent = category.name;
-        badgeContainer.appendChild(badge);
-      });
-
-      // メタデータの後に挿入
-      metadataLine.parentNode?.insertBefore(badgeContainer, metadataLine.nextSibling);
+      if (metadataLine?.parentNode) {
+        const badgeContainer = document.createElement('div');
+        badgeContainer.className = 'category-badge-container';
+        matchedCategories.forEach(category => {
+          const badge = document.createElement('span');
+          badge.className = 'category-badge';
+          badge.textContent = category.name;
+          badgeContainer.appendChild(badge);
+        });
+        metadataLine.parentNode.insertBefore(badgeContainer, metadataLine.nextSibling);
+      }
     }
   }
 }
